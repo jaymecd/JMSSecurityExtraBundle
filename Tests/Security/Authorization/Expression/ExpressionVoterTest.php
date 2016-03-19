@@ -33,6 +33,33 @@ class ExpressionVoterTest extends \PHPUnit_Framework_TestCase
         ));
     }
 
+    public function testVoteEmptyCache()
+    {
+        $role = 'ROLE_FOO';
+        $expression = 'hasRole("ROLE_FOO")';
+
+        $this->voter->setCacheDir($this->cacheDir);
+
+        $token = $this->getMock('Symfony\Component\Security\Core\Authentication\Token\TokenInterface');
+        $token->expects($this->once())
+            ->method('getRoles')
+            ->will($this->returnValue(array(new Role($role))));
+
+        // emulate empty file
+        $filename = $this->cacheDir . DIRECTORY_SEPARATOR . sha1($expression) . '.php';
+        file_put_contents($filename, '');
+
+        $this->assertFalse(is_callable(require $filename));
+
+        $this->assertSame(VoterInterface::ACCESS_GRANTED, $this->voter->vote(
+            $token,
+            new \stdClass,
+            array(new Expression($expression))
+        ));
+
+        $this->assertTrue(is_callable(require $filename));
+    }
+
     /**
      * @dataProvider getVoteTests
      */

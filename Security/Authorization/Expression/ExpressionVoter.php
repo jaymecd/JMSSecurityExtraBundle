@@ -115,17 +115,44 @@ class ExpressionVoter implements VoterInterface
 
     private function createEvaluator(Expression $expr)
     {
-        if ($this->cacheDir) {
-            if (is_file($file = $this->cacheDir.'/'.sha1($expr->expression).'.php')) {
-                return require $file;
-            }
-
-            $source = $this->getCompiler()->compileExpression($expr);
-            file_put_contents($file, "<?php\n".$source);
-
-            return require $file;
+        if (!$this->cacheDir) {
+            return eval($this->getCompiler()->compileExpression($expr));
         }
 
-        return eval($this->getCompiler()->compileExpression($expr));
+        $file = $this->cacheDir . '/' . $expr->getHashCode() . '.php';
+
+        if (is_file($file)) {
+            $callback = require $file;
+
+            if (is_callable($callback)) {
+                return $callback;
+            }
+
+            if (null !== $this->logger) {
+                $this->logger->error(sprintf('Expression "%s" failed to load; cache broken', $expr->expression));
+            }
+        }
+
+        if (null !== $this->logger) {
+            $this->logger->info(sprintf('Caching "%s" expression; hashCode: %s', $expr->expression, $expr->getHashCode()));
+        }
+
+        $source = $this->getCompiler()->compileExpression($expr);
+        $content = "<?php\n" . $source;
+
+        // avoid blocking I/O
+        $tmpfile = $this->cacheDir . '/' . uniqid($expr->getHashCode(), true) . '.tmp';
+
+        $written = file_put_contents($tmpfile, $content);
+
+        if ($written !== mb_strlen($content)) {
+            if (null !== $this->logger) {
+                $this->logger->error(sprintf('Expression "%s" not cached; eval source.', $expr->expression));
+            }
+        }
+
+        rename($tmpfile, $file);
+
+        return eval($source);
     }
 }
